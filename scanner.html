@@ -1,0 +1,502 @@
+<!DOCTYPE html>
+<html lang="id">
+
+<head>
+  <meta charset="UTF-8">
+
+  <meta
+    name="viewport"
+    content="width=device-width, initial-scale=1, viewport-fit=cover"
+  >
+
+  <title>Scanner Inventaris</title>
+
+  <!-- Library Scanner -->
+  <script
+    src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js">
+  </script>
+
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      font-family:
+        Arial,
+        Helvetica,
+        sans-serif;
+      background: #f4f7fb;
+      color: #1f2937;
+    }
+
+    .container {
+      max-width: 650px;
+      margin: 0 auto;
+      padding:
+        calc(20px + env(safe-area-inset-top))
+        16px
+        calc(20px + env(safe-area-inset-bottom));
+    }
+
+    .card {
+      background: #ffffff;
+      border-radius: 18px;
+      padding: 20px;
+      box-shadow:
+        0 6px 25px rgba(0, 0, 0, .08);
+    }
+
+    .icon {
+      font-size: 52px;
+      text-align: center;
+      margin-bottom: 10px;
+    }
+
+    h1 {
+      margin: 0;
+      text-align: center;
+      font-size: 24px;
+    }
+
+    .subtitle {
+      color: #6b7280;
+      text-align: center;
+      margin-top: 8px;
+      margin-bottom: 20px;
+      line-height: 1.5;
+    }
+
+    #reader {
+      width: 100%;
+      overflow: hidden;
+      border-radius: 12px;
+    }
+
+    #status {
+      margin-top: 16px;
+      padding: 12px 14px;
+      border-radius: 10px;
+      text-align: center;
+      font-size: 14px;
+    }
+
+    .status-info {
+      background: #dbeafe;
+      color: #1e40af;
+    }
+
+    .status-success {
+      background: #dcfce7;
+      color: #166534;
+    }
+
+    .status-error {
+      background: #fee2e2;
+      color: #991b1b;
+    }
+
+    .manual-section {
+      margin-top: 25px;
+      padding-top: 20px;
+      border-top: 1px solid #e5e7eb;
+    }
+
+    .manual-section h2 {
+      font-size: 17px;
+      margin-top: 0;
+      margin-bottom: 7px;
+    }
+
+    .manual-section p {
+      color: #6b7280;
+      font-size: 13px;
+      margin-bottom: 12px;
+    }
+
+    input {
+      width: 100%;
+      padding: 13px 14px;
+      border: 1px solid #d1d5db;
+      border-radius: 9px;
+      font-size: 16px;
+      outline: none;
+    }
+
+    input:focus {
+      border-color: #2563eb;
+    }
+
+    button {
+      width: 100%;
+      margin-top: 10px;
+      padding: 13px;
+      border: 0;
+      border-radius: 9px;
+      background: #2563eb;
+      color: #ffffff;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    button:disabled {
+      opacity: .6;
+      cursor: not-allowed;
+    }
+
+    .footer {
+      text-align: center;
+      color: #9ca3af;
+      font-size: 11px;
+      margin-top: 16px;
+    }
+  </style>
+</head>
+
+
+<body>
+
+<div class="container">
+
+  <div class="card">
+
+    <div class="icon">
+      ▦
+    </div>
+
+    <h1>
+      Scanner Inventaris
+    </h1>
+
+    <div class="subtitle">
+      Izinkan akses kamera lalu arahkan kamera
+      ke barcode inventaris CODE128.
+    </div>
+
+
+    <!-- AREA KAMERA -->
+    <div id="reader"></div>
+
+
+    <!-- STATUS -->
+    <div
+      id="status"
+      class="status-info"
+    >
+      Menyiapkan scanner...
+    </div>
+
+
+    <!-- INPUT MANUAL -->
+    <div class="manual-section">
+
+      <h2>
+        Input Manual
+      </h2>
+
+      <p>
+        Gunakan jika barcode sulit dipindai.
+      </p>
+
+      <input
+        id="manualCode"
+        type="text"
+        placeholder="Contoh: INV-2026-000001"
+        autocomplete="off"
+      >
+
+      <button
+        type="button"
+        onclick="submitManual()"
+      >
+        Gunakan Kode Inventaris
+      </button>
+
+    </div>
+
+
+    <div class="footer">
+      Scanner Inventaris Kantor
+    </div>
+
+  </div>
+
+</div>
+
+
+<script>
+  let scanner = null;
+  let processing = false;
+
+
+  function setStatus(message, type) {
+    const status =
+      document.getElementById('status');
+
+    status.textContent = message;
+
+    status.className = '';
+
+    if (type === 'success') {
+      status.classList.add(
+        'status-success'
+      );
+    } else if (type === 'error') {
+      status.classList.add(
+        'status-error'
+      );
+    } else {
+      status.classList.add(
+        'status-info'
+      );
+    }
+  }
+
+
+  function normalizeCode(code) {
+    return String(code || '')
+      .trim()
+      .toUpperCase();
+  }
+
+
+  function isValidInventoryCode(code) {
+    /*
+     * Format aplikasi:
+     * INV-2026-000001
+     *
+     * Jika format kode Anda berubah,
+     * regex ini dapat disesuaikan.
+     */
+    return /^INV-\d{4}-\d{6}$/.test(code);
+  }
+
+
+  async function sendBarcode(rawCode) {
+    if (processing) {
+      return;
+    }
+
+    const code =
+      normalizeCode(rawCode);
+
+    if (!code) {
+      return;
+    }
+
+
+    if (!isValidInventoryCode(code)) {
+      setStatus(
+        'Kode terbaca tetapi formatnya bukan kode inventaris: ' +
+        code,
+        'error'
+      );
+
+      return;
+    }
+
+
+    processing = true;
+
+
+    setStatus(
+      'Barcode berhasil dibaca: ' +
+      code +
+      '. Mengirim ke aplikasi...',
+      'success'
+    );
+
+
+    /*
+     * Hentikan kamera setelah barcode ditemukan.
+     */
+    try {
+      if (scanner) {
+        await scanner.clear();
+      }
+    } catch (error) {
+      console.warn(error);
+    }
+
+
+    /*
+     * Mengirim hasil kepada halaman aplikasi
+     * yang membuka scanner.
+     */
+    if (window.opener) {
+
+      window.opener.postMessage(
+        {
+          type:
+            'INVENTORY_BARCODE_SCANNED',
+
+          code:
+            code
+        },
+        '*'
+      );
+
+
+      /*
+       * Beri sedikit waktu agar pesan terkirim.
+       */
+      setTimeout(
+        function () {
+          window.close();
+        },
+        700
+      );
+
+    } else {
+
+      /*
+       * Fallback jika halaman dibuka langsung
+       * tanpa berasal dari aplikasi inventaris.
+       */
+      setStatus(
+        'Barcode: ' +
+        code +
+        '. Kembali ke aplikasi inventaris.',
+        'success'
+      );
+
+      processing = false;
+    }
+  }
+
+
+  function submitManual() {
+    const code =
+      document
+        .getElementById(
+          'manualCode'
+        )
+        .value;
+
+    sendBarcode(code);
+  }
+
+
+  async function startScanner() {
+
+    if (
+      typeof Html5QrcodeScanner ===
+      'undefined'
+    ) {
+      setStatus(
+        'Library scanner gagal dimuat.',
+        'error'
+      );
+
+      return;
+    }
+
+
+    setStatus(
+      'Izinkan penggunaan kamera ketika browser meminta izin.',
+      'info'
+    );
+
+
+    try {
+
+      scanner =
+        new Html5QrcodeScanner(
+          'reader',
+          {
+            fps: 12,
+
+            qrbox: {
+              width: 300,
+              height: 150
+            },
+
+            rememberLastUsedCamera:
+              true,
+
+            showTorchButtonIfSupported:
+              true,
+
+            showZoomSliderIfSupported:
+              true,
+
+            supportedScanTypes: [
+              Html5QrcodeScanType
+                .SCAN_TYPE_CAMERA,
+
+              Html5QrcodeScanType
+                .SCAN_TYPE_FILE
+            ],
+
+            formatsToSupport: [
+              Html5QrcodeSupportedFormats
+                .CODE_128
+            ]
+          },
+          false
+        );
+
+
+      scanner.render(
+
+        async function (
+          decodedText,
+          decodedResult
+        ) {
+          await sendBarcode(
+            decodedText
+          );
+        },
+
+        function (
+          errorMessage
+        ) {
+          /*
+           * Error pembacaan setiap frame
+           * tidak perlu ditampilkan.
+           *
+           * Scanner akan terus mencoba.
+           */
+        }
+
+      );
+
+
+    } catch (error) {
+
+      console.error(error);
+
+      setStatus(
+        'Kamera gagal dibuka. Pastikan browser mendapat izin kamera.',
+        'error'
+      );
+
+    }
+  }
+
+
+  document
+    .getElementById(
+      'manualCode'
+    )
+    .addEventListener(
+      'keydown',
+      function (event) {
+        if (event.key === 'Enter') {
+          submitManual();
+        }
+      }
+    );
+
+
+  window.addEventListener(
+    'load',
+    startScanner
+  );
+</script>
+
+</body>
+
+</html>
